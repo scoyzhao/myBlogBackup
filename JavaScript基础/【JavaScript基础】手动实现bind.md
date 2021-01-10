@@ -81,7 +81,7 @@ Function.prototype.bind = function (context, ...args1) {
 
   let self = this
   let fBound = function(...args2) {
-    let _this = this instanceof self ? this : oThis //检测是否使用new创建
+    let _this = this instanceof self ? this : context //检测是否使用new创建
       return self.apply(_this, [...args1, ...args2])
   }
 
@@ -92,6 +92,48 @@ Function.prototype.bind = function (context, ...args1) {
   return fBound
 }
 ```
+假设我们将调用bind的函数称为C，将fBound的prototype原型对象指向C的prototype原型对象（上例中就是self），这样的话如果将fBound作为构造函数（使用new操作符）实例化一个对象，那么这个对象也是C的实例，this instanceof self就会返回true。这时就将self指向新创建的对象的this上就可以达到原生bind的效果了（不再固定指定的this）。否则，才使用oThis，即绑定指定的this。  
+
+但是这样做会有什么影响？将fBound的prototype原型对象直接指向self的prototype原型对象，那么当修改fBound的prototype对象时，self（上述C函数）的prototype对象也会被修改！！考虑到这个问题，我们需要另外一个function来帮我们做个中间人来避免这个问题，我们看看MDN是怎么实现bind的。  
+<br>
+
+### MDN的做法
+<br>
+
+```javascript
+if (!Function.prototype.bind) {
+  Function.prototype.bind = function(oThis) {
+    if (typeof this !== 'function') {
+      // closest thing possible to the ECMAScript 5
+      // internal IsCallable function
+      throw new TypeError('Function.prototype.bind - what is trying to be bound is not callable');
+    }
+
+    var aArgs = Array.prototype.slice.call(arguments, 1),//这里的arguments是跟oThis一起传进来的实参
+      fToBind = this,
+      fNOP    = function() {},
+      fBound  = function() {
+        return fToBind.apply(this instanceof fNOP
+          ? this
+          : oThis,
+          // 获取调用时(fBound)的传参.bind 返回的函数入参往往是这么传递的
+          aArgs.concat(Array.prototype.slice.call(arguments)));
+      };
+
+    // 维护原型关系
+    if (this.prototype) {
+      // Function.prototype doesn't have a prototype property
+      fNOP.prototype = this.prototype;
+    }
+    fBound.prototype = new fNOP();
+
+    return fBound;
+  };
+}
+```
+
+发现了吗，和上面经过改造的方案相比，最主要的差异就在于它定义了一个空的function fNOP，通过fNOP来传递原型对象给fBound（通过实例化的方式）。这时，修改fBound的prototype对象，就不会影响到self的prototype对象啦～而且fNOP是空对象，所以几乎不占内存。  
+
 
 
 
